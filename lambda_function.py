@@ -20,9 +20,8 @@ def build_response(status_code, message):
         "headers": {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-            "Access-Control-Allow-Methods": "OPTIONS,POST"
-            # Uncomment if you need credentials in cross-site requests:
-            # "Access-Control-Allow-Credentials": "true"
+            "Access-Control-Allow-Methods": "POST,OPTIONS"
+            # Remove the commented line about credentials since it's not in your OPTIONS method
         },
         "body": json.dumps(message)
     }
