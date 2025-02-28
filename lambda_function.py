@@ -1,69 +1,61 @@
-import os
 import json
 import base64
 import boto3
+import os
 
-# Initialize the S3 client
 s3 = boto3.client('s3')
+BUCKET_NAME = os.getenv("BUCKET_NAME")  
+UPLOAD_PASSWORD = os.getenv("UPLOAD_PASSWORD")
 
-# Environment variables provided via CloudFormation
-BUCKET_NAME = os.environ.get('BUCKET_NAME')
-UPLOAD_PASSWORD = os.environ.get('UPLOAD_PASSWORD')
+# Allowed file extensions
+ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "png", "jpg", "eml", "msg"}
 
-def lambda_handler(event, context):
+def build_response(status_code, message):
     """
-    Expected JSON payload (from API Gateway):
-    {
-      "uploadPassword": "yourPassword",
-      "fileName": "example.txt",
-      "fileContent": "<base64-encoded file content>"
-    }
+    Helper function to build a response that includes
+    CORS headers for AWS_PROXY integration.
     """
-    # Retrieve the request body (API Gateway proxy integration)
-    body_str = event.get("body")
-    if not body_str:
-        return _response(400, "Missing request body")
-    
-    try:
-        body = json.loads(body_str)
-    except json.JSONDecodeError:
-        return _response(400, "Invalid JSON in request body")
-    
-    # Validate the upload password
-    if body.get("uploadPassword") != UPLOAD_PASSWORD:
-        return _response(403, "Invalid upload password")
-    
-    # Retrieve file details from the payload
-    file_name = body.get("fileName")
-    file_content_b64 = body.get("fileContent")
-    if not file_name or not file_content_b64:
-        return _response(400, "Missing fileName or fileContent")
-    
-    # Decode the base64 file content
-    try:
-        decoded_content = base64.b64decode(file_content_b64)
-    except Exception as e:
-        return _response(400, f"Error decoding fileContent: {str(e)}")
-    
-    # Upload the file to S3
-    try:
-        s3.put_object(
-            Bucket=BUCKET_NAME,
-            Key=file_name,
-            Body=decoded_content
-        )
-    except Exception as e:
-        return _response(500, f"Error uploading file to S3: {str(e)}")
-    
-    return _response(200, f"File '{file_name}' uploaded successfully to bucket '{BUCKET_NAME}'.")
-
-def _response(status_code, message):
-    """Helper function to format API Gateway proxy responses."""
     return {
         "statusCode": status_code,
         "headers": {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*"  # Enable CORS if needed
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+            "Access-Control-Allow-Methods": "OPTIONS,POST"
+            # Uncomment if you need credentials in cross-site requests:
+            # "Access-Control-Allow-Credentials": "true"
         },
-        "body": json.dumps({"message": message})
+        "body": json.dumps(message)
     }
+
+def lambda_handler(event, context):
+    try:
+        # If using API Gateway proxy, 'body' is a JSON string
+        body = json.loads(event["body"]) if "body" in event else event
+
+        if body.get("password") != UPLOAD_PASSWORD:
+            return build_response(401, "Unauthorized: Incorrect password")
+
+        files = body.get("files", [])
+        if not files:
+            return build_response(400, "No files found in the request")
+
+        if len(files) > 10:
+            return build_response(400, "You can upload a maximum of 10 files")
+
+        for file in files:
+            file_name = file["name"]
+            file_extension = file_name.split('.')[-1].lower()
+
+            if file_extension not in ALLOWED_EXTENSIONS:
+                return build_response(
+                    400,
+                    f"Invalid file type: {file_name}. Allowed types: PDF, Word, Excel, PNG, JPG, Email."
+                )
+
+            file_content = base64.b64decode(file["content"])
+            s3.put_object(Bucket=BUCKET_NAME, Key=file_name, Body=file_content)
+
+        return build_response(200, "File(s) uploaded successfully!")
+
+    except Exception as e:
+        return build_response(500, f"Error: {str(e)}")
