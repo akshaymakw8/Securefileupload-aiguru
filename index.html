@@ -1,185 +1,188 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure File Upload AI Guru</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure File Upload %%COMPANY_NAME%%</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
-    <!-- Logo -->
-    <div class="absolute top-4 left-8">
-        <img src="https://aigurupublic.s3.us-east-1.amazonaws.com/ai-guru-logo.png" alt="AI Guru Logo" class="h-16">
+  <!-- Logo -->
+  <div class="absolute top-4 left-8">
+    <!-- If you have a dynamic logo URL, you could also parameterize this -->
+    <img src="https://aigurupublic.s3.us-east-1.amazonaws.com/ai-guru-logo.png" alt="%%COMPANY_NAME%% Logo" class="h-16">
+  </div>
+
+  <!-- Main Content -->
+  <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+    <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">Secure File Upload %%COMPANY_NAME%%</h1>
+    
+    <!-- Password Input -->
+    <div class="mb-6">
+      <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+      <input type="password" id="password" placeholder="Enter your password" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
     </div>
 
-    <!-- Main Content -->
-    <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
-        <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">Secure File Upload AI Guru</h1>
+    <!-- File Upload Section -->
+    <div class="mb-6">
+      <label class="block text-sm font-medium text-gray-700">Upload Files</label>
+      <div id="dropZone" class="mt-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-md p-6 cursor-pointer hover:border-blue-500 transition-colors">
+        <span id="dropText" class="text-gray-500">Drag & drop files here or click to upload</span>
+        <input type="file" id="fileInput" multiple class="hidden" />
+      </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="mb-4">
+      <label class="block text-sm font-medium text-gray-700">Overall Progress</label>
+      <div class="w-full bg-gray-200 rounded-full h-2.5">
+        <div id="overallProgress" class="bg-blue-500 h-2.5 rounded-full" style="width: 0%;"></div>
+      </div>
+      <p id="overallProgressText" class="text-sm text-gray-600 mt-1">0%</p>
+    </div>
+
+    <!-- Individual File Progress -->
+    <div id="individualProgressContainer" class="mb-6"></div>
+
+    <!-- Upload Button -->
+    <button onclick="uploadFiles()" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Upload Files</button>
+
+    <!-- Loading Spinner -->
+    <div id="loading" class="hidden mt-4 text-center">
+      <svg class="animate-spin h-5 w-5 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+    </div>
+
+    <!-- Status Message -->
+    <p id="status" class="mt-4 text-center text-sm"></p>
+
+    <!-- Uploaded Files List -->
+    <div id="uploadedFilesContainer" class="mt-6 hidden">
+      <h2 class="text-lg font-semibold text-gray-800">Uploaded Files</h2>
+      <ul id="uploadedFilesList" class="mt-2 list-disc list-inside text-gray-700"></ul>
+    </div>
+  </div>
+
+  <script>
+    // The API URL will be injected during the build process.
+    const apiUrl = "%%API_URL%%";
+    
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const dropText = document.getElementById('dropText');
+    const status = document.getElementById('status');
+    const loading = document.getElementById('loading');
+    const overallProgress = document.getElementById('overallProgress');
+    const overallProgressText = document.getElementById('overallProgressText');
+    const individualProgressContainer = document.getElementById('individualProgressContainer');
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-blue-500');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('border-blue-500');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-blue-500');
+      fileInput.files = e.dataTransfer.files;
+      updateDropText();
+    });
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => updateDropText());
+
+    function updateDropText() {
+      dropText.textContent = fileInput.files.length > 0 ? `${fileInput.files.length} file(s) selected` : 'Drag & drop files here or click to upload';
+    }
+
+    async function uploadFiles() {
+      const password = document.getElementById('password').value;
+      const files = fileInput.files;
+
+      if (files.length === 0) {
+        status.textContent = 'No files selected!';
+        status.classList.add('text-red-500');
+        return;
+      }
+
+      overallProgress.style.width = '0%';
+      overallProgressText.textContent = '0%';
+      individualProgressContainer.innerHTML = '';
+
+      const fileData = [];
+      let uploadedCount = 0;
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const reader = new FileReader();
         
-        <!-- Password Input -->
-        <div class="mb-6">
-            <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
-            <input type="password" id="password" placeholder="Enter your password" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
+        reader.onload = function (e) {
+          fileData.push({
+            name: file.name,
+            content: e.target.result.split(',')[1]
+          });
 
-        <!-- File Upload Section -->
-        <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700">Upload Files</label>
-            <div id="dropZone" class="mt-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-md p-6 cursor-pointer hover:border-blue-500 transition-colors">
-                <span id="dropText" class="text-gray-500">Drag & drop files here or click to upload</span>
-                <input type="file" id="fileInput" multiple class="hidden" />
-            </div>
-        </div>
+          uploadedCount++;
+          updateOverallProgress(uploadedCount, files.length);
 
-        <!-- Progress Bar -->
-        <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700">Overall Progress</label>
-            <div class="w-full bg-gray-200 rounded-full h-2.5">
-                <div id="overallProgress" class="bg-blue-500 h-2.5 rounded-full" style="width: 0%;"></div>
-            </div>
-            <p id="overallProgressText" class="text-sm text-gray-600 mt-1">0%</p>
-        </div>
+          if (uploadedCount === files.length) {
+            sendToLambda(fileData);
+          }
+        };
 
-        <!-- Individual File Progress -->
-        <div id="individualProgressContainer" class="mb-6"></div>
+        reader.readAsDataURL(file);
+      }
 
-        <!-- Upload Button -->
-        <button onclick="uploadFiles()" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">Upload Files</button>
+      status.textContent = 'Uploading files...';
+      status.classList.add('text-blue-500');
+      loading.classList.remove('hidden');
+    }
 
-        <!-- Loading Spinner -->
-        <div id="loading" class="hidden mt-4 text-center">
-            <svg class="animate-spin h-5 w-5 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-        </div>
+    function updateOverallProgress(uploadedCount, totalFiles) {
+      const progress = Math.round((uploadedCount / totalFiles) * 100);
+      overallProgress.style.width = `${progress}%`;
+      overallProgressText.textContent = `${progress}%`;
+    }
 
-        <!-- Status Message -->
-        <p id="status" class="mt-4 text-center text-sm"></p>
-
-        <!-- Uploaded Files List -->
-        <div id="uploadedFilesContainer" class="mt-6 hidden">
-            <h2 class="text-lg font-semibold text-gray-800">Uploaded Files</h2>
-            <ul id="uploadedFilesList" class="mt-2 list-disc list-inside text-gray-700"></ul>
-        </div>
-    </div>
-
-    <script>
-        const dropZone = document.getElementById('dropZone');
-        const fileInput = document.getElementById('fileInput');
-        const dropText = document.getElementById('dropText');
-        const status = document.getElementById('status');
-        const loading = document.getElementById('loading');
-        const overallProgress = document.getElementById('overallProgress');
-        const overallProgressText = document.getElementById('overallProgressText');
-        const individualProgressContainer = document.getElementById('individualProgressContainer');
-
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('border-blue-500');
+    async function sendToLambda(fileData) {
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: document.getElementById('password').value, files: fileData })
         });
 
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('border-blue-500');
-        });
+        const result = await response.json();
+        status.textContent = result.body;
+        status.classList.add('text-green-500');
 
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('border-blue-500');
-            fileInput.files = e.dataTransfer.files;
-            updateDropText();
-        });
-
-        dropZone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', () => updateDropText());
-
-        function updateDropText() {
-            dropText.textContent = fileInput.files.length > 0 ? `${fileInput.files.length} file(s) selected` : 'Drag & drop files here or click to upload';
+        if (response.ok) {
+          displayUploadedFiles(fileData);
         }
+      } catch (error) {
+        status.textContent = 'Error uploading files.';
+        status.classList.add('text-red-500');
+      } finally {
+        loading.classList.add('hidden');
+      }
+    }
 
-        async function uploadFiles() {
-            const password = document.getElementById('password').value;
-            const files = fileInput.files;
-
-            if (files.length === 0) {
-                status.textContent = 'No files selected!';
-                status.classList.add('text-red-500');
-                return;
-            }
-
-            overallProgress.style.width = '0%';
-            overallProgressText.textContent = '0%';
-            individualProgressContainer.innerHTML = '';
-
-            const fileData = [];
-            let uploadedCount = 0;
-
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                const reader = new FileReader();
-                
-                reader.onload = function (e) {
-                    fileData.push({
-                        name: file.name,
-                        content: e.target.result.split(',')[1] 
-                    });
-
-                    uploadedCount++;
-                    updateOverallProgress(uploadedCount, files.length);
-
-                    if (uploadedCount === files.length) {
-                        sendToLambda(fileData);
-                    }
-                };
-
-                reader.readAsDataURL(file);
-            }
-
-            status.textContent = 'Uploading files...';
-            status.classList.add('text-blue-500');
-            loading.classList.remove('hidden');
-        }
-
-        function updateOverallProgress(uploadedCount, totalFiles) {
-            const progress = Math.round((uploadedCount / totalFiles) * 100);
-            overallProgress.style.width = `${progress}%`;
-            overallProgressText.textContent = `${progress}%`;
-        }
-
-        async function sendToLambda(fileData) {
-            const apiUrl = 'https://n4oddvu1ak.execute-api.ap-south-1.amazonaws.com/v1/upload';
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: document.getElementById('password').value, files: fileData })
-                });
-
-                const result = await response.json();
-                status.textContent = result.body;
-                status.classList.add('text-green-500');
-
-                if (response.ok) {
-                    displayUploadedFiles(fileData);
-                }
-            } catch (error) {
-                status.textContent = 'Error uploading files.';
-                status.classList.add('text-red-500');
-            } finally {
-                loading.classList.add('hidden');
-            }
-        }
-
-        function displayUploadedFiles(files) {
-            const uploadedFilesList = document.getElementById('uploadedFilesList');
-            uploadedFilesList.innerHTML = '';
-            files.forEach(file => {
-                const listItem = document.createElement('li');
-                listItem.textContent = file.name;
-                uploadedFilesList.appendChild(listItem);
-            });
-            document.getElementById('uploadedFilesContainer').classList.remove('hidden');
-        }
-    </script>
+    function displayUploadedFiles(files) {
+      const uploadedFilesList = document.getElementById('uploadedFilesList');
+      uploadedFilesList.innerHTML = '';
+      files.forEach(file => {
+        const listItem = document.createElement('li');
+        listItem.textContent = file.name;
+        uploadedFilesList.appendChild(listItem);
+      });
+      document.getElementById('uploadedFilesContainer').classList.remove('hidden');
+    }
+  </script>
 </body>
 </html>
