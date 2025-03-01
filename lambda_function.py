@@ -4,7 +4,7 @@ import boto3
 import os
 
 s3 = boto3.client('s3')
-BUCKET_NAME = os.getenv("BUCKET_NAME")  
+BUCKET_NAME = os.getenv("BUCKET_NAME")
 UPLOAD_PASSWORD = os.getenv("UPLOAD_PASSWORD")
 
 # Allowed file extensions
@@ -21,12 +21,15 @@ def build_response(status_code, message):
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
             "Access-Control-Allow-Methods": "POST,OPTIONS"
-            # Remove the commented line about credentials since it's not in your OPTIONS method
         },
         "body": json.dumps(message)
     }
 
 def lambda_handler(event, context):
+    # Handle OPTIONS method for CORS preflight
+    if event.get('httpMethod') == 'OPTIONS':
+        return build_response(200, "")
+
     try:
         # If using API Gateway proxy, 'body' is a JSON string
         body = json.loads(event["body"]) if "body" in event else event
