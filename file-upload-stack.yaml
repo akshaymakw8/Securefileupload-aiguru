@@ -42,7 +42,7 @@ Parameters:
 
   CustomDomainPrefix:
     Type: String
-    Description: 'Subdomain prefix for the app (e.g., fileupload)'
+    Description: 'Base name for the app subdomain (e.g., akshay)'
     Default: "fileupload"
 
 Resources:
@@ -90,12 +90,13 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
-  ## 3. Lambda Function for File Upload (External Code)
+  ## 3. Lambda Function for File Upload
   LambdaFunction:
     Type: AWS::Lambda::Function
     DependsOn: S3Bucket
     Properties:
-      FunctionName: FileUploadLambda
+      # Lambda function name is computed by appending "Lambda" to the CustomDomainPrefix value.
+      FunctionName: !Sub "${CustomDomainPrefix}Lambda"
       Runtime: python3.9
       Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -126,7 +127,7 @@ Resources:
         Types:
           - REGIONAL
 
-  ## Add Gateway Responses for CORS for all response types
+  ## Gateway Responses for CORS (4XX and 5XX)
   ApiGateway4XXResponse:
     Type: AWS::ApiGateway::GatewayResponse
     Properties:
@@ -147,6 +148,7 @@ Resources:
         gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         gatewayresponse.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
 
+  ## API Gateway Resource for File Upload
   ApiGatewayResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -154,7 +156,7 @@ Resources:
       ParentId: !GetAtt ApiGateway.RootResourceId
       PathPart: upload
 
-  ## 4a. POST Method with CORS
+  ## 4a. POST Method with AWS_PROXY integration
   ApiGatewayMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -209,7 +211,7 @@ Resources:
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
 
-  ## 4c. Deployment & Stage (automatically apply changes)
+  ## 4c. Deployment & Stage
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
@@ -251,7 +253,7 @@ Resources:
                   - s3:ListBucket
                 Resource: "*"
 
-  ## 6. Amplify App (without auto-branch creation properties)
+  ## 6. Amplify App
   AmplifyApp:
     Type: AWS::Amplify::App
     Properties:
@@ -415,7 +417,7 @@ Resources:
       AppId: !GetAtt AmplifyApp.AppId
       BranchName: "main"
 
-  ## 11. Amplify Custom Domain
+  ## 11. Amplify Custom Domain using the provided CustomDomainPrefix (without "Lambda")
   AmplifyDomain:
     Type: AWS::Amplify::Domain
     DependsOn: AmplifyBranch
