@@ -10,7 +10,7 @@
   <!-- Logo -->
   <div class="absolute top-4 left-8">
     <!-- If you have a dynamic logo URL, you could also parameterize this -->
-    <img src="https://aigurupublic.s3.us-east-1.amazonaws.com/ai-guru-logo.png" alt="%%COMPANY_NAME%% Logo" class="h-16">
+    <img src="https://aigurupublic.s3.us-east-1.amazonaws.com/snapline-logo.png" alt="%%COMPANY_NAME%% Logo" class="h-16">
   </div>
 
   <!-- Main Content -->
@@ -45,7 +45,7 @@
           <ul class="mt-2 text-sm text-blue-700 list-disc ml-5">
             <li>Documents: PDF, DOC, DOCX, TXT</li>
             <li>Spreadsheets: XLS, XLSX, CSV</li>
-            <li>Email: EML</li>
+            <li>Email: EML, MSG</li>
             <li>Images: JPG, PNG, GIF</li>
           </ul>
         </div>
@@ -127,7 +127,7 @@
     });
 
     // List of allowed file extensions
-    const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv', '.eml', '.jpg', '.jpeg', '.png', '.gif'];
+    const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.csv', '.eml', 'msg', '.jpg', '.jpeg', '.png', '.gif'];
 
     dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
