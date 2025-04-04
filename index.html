@@ -143,15 +143,21 @@
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('border-blue-500');
-      fileInput.files = e.dataTransfer.files;
-      updateDropText();
+      if (e.dataTransfer && e.dataTransfer.files) {
+        fileInput.files = e.dataTransfer.files;
+        updateDropText();
+      }
     });
 
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => updateDropText());
 
     function updateDropText() {
-      dropText.textContent = fileInput.files.length > 0 ? `${fileInput.files.length} file(s) selected` : 'Drag & drop files here or click to upload';
+      if (fileInput && fileInput.files) {
+        dropText.textContent = fileInput.files.length > 0 ? `${fileInput.files.length} file(s) selected` : 'Drag & drop files here or click to upload';
+      } else {
+        dropText.textContent = 'Drag & drop files here or click to upload';
+      }
     }
 
     function checkFileType(fileName) {
@@ -180,9 +186,19 @@
 
     async function uploadFiles() {
       const password = document.getElementById('password').value;
+      
+      // Make sure fileInput exists and has files property
+      if (!fileInput || !fileInput.files) {
+        console.error('File input not properly initialized');
+        status.textContent = 'Error accessing file input. Please try again.';
+        status.classList.remove('text-green-500', 'text-blue-500');
+        status.classList.add('text-red-500');
+        return;
+      }
+      
       const files = fileInput.files;
 
-      if (!files || files.length === 0) {
+      if (files.length === 0) {
         status.textContent = 'No files selected!';
         status.classList.remove('text-green-500', 'text-blue-500');
         status.classList.add('text-red-500');
@@ -246,7 +262,7 @@
 
           const progressBar = document.createElement('div');
           progressBar.classList.add('mb-2');
-          progressBar.innerHTML = ` 
+          progressBar.innerHTML = `
             <label class="text-sm">${file.name}</label>
             <div class="w-full bg-gray-200 rounded-full h-2.5">
               <div class="bg-green-500 h-2.5 rounded-full" style="width: 0%"></div>
@@ -261,7 +277,7 @@
               headers: { 'Content-Type': file.type },
               body: file
             });
-
+            
             innerBar.style.width = '100%';
             updateOverallProgress(++uploadedCount, files.length);
           } catch (error) {
