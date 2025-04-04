@@ -1,46 +1,46 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: File Upload Tool with S3, Lambda (Presigned URL + Notify), API Gateway, and Amplify
+Description: File Upload Tool (Presigned URL + Notify Logging) with S3, Lambda, API Gateway, Amplify, and Custom Domain
 
 Parameters:
   GitHubRepo:
     Type: String
-    Description: 'GitHub repository in the format "owner/repo"'
+    Description: 'GitHub repo in format "owner/repo"'
 
   GitHubAccessToken:
     Type: String
     NoEcho: true
-    Description: 'GitHub Personal Access Token with repo + admin:repo_hook scopes'
+    Description: 'GitHub token with repo + admin:repo_hook'
 
   UploadPassword:
     Type: String
     NoEcho: true
-    Description: 'Password for file uploads'
+    Description: 'Password for uploads'
 
   S3BucketName:
     Type: String
-    Description: 'S3 bucket name for storing uploaded files'
+    Description: 'Bucket name for file storage'
 
   LambdaCodeBucket:
     Type: String
-    Description: 'S3 bucket where Lambda code (lambda.zip) is stored'
+    Description: 'S3 bucket with lambda.zip'
 
   LambdaCodeKey:
     Type: String
-    Description: 'S3 object key for Lambda code (lambda.zip)'
+    Description: 'S3 key for lambda.zip'
 
   CompanyName:
     Type: String
-    Description: 'Company name shown in UI'
     Default: "AI Guru"
+    Description: 'Displayed in UI'
 
   CustomDomainName:
     Type: String
-    Description: 'Domain name (e.g., aiguru.in)'
+    Description: 'e.g. aiguru.in'
 
   CustomDomainPrefix:
     Type: String
     Default: "fileupload"
-    Description: 'Subdomain prefix (e.g., fileupload)'
+    Description: 'e.g. fileupload'
 
 Resources:
 
@@ -106,12 +106,13 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref LambdaFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*"
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*
 
   ApiGateway:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: FileUploadAPI
+      Description: Upload API with notify logging
       EndpointConfiguration:
         Types: [REGIONAL]
 
@@ -132,9 +133,7 @@ Resources:
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
-        Uri: !Sub
-          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionArn}/invocations
-          - { LambdaFunctionArn: !GetAtt LambdaFunction.Arn }
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
@@ -183,9 +182,7 @@ Resources:
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
-        Uri: !Sub
-          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionArn}/invocations
-          - { LambdaFunctionArn: !GetAtt LambdaFunction.Arn }
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
@@ -228,10 +225,85 @@ Resources:
       RestApiId: !Ref ApiGateway
       StageName: prod
 
+  AmplifyServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: amplify.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AmplifyAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - amplify:*  
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource: "*"
+
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: FileUploadApp
+      Repository: !Ref GitHubRepo
+      AccessToken: !Ref GitHubAccessToken
+      IAMServiceRole: !GetAtt AmplifyServiceRole.Arn
+      EnableBranchAutoDeletion: true
+      BuildSpec: |
+        version: 1
+        frontend:
+          phases:
+            preBuild:
+              commands:
+                - sed -i "s|%%API_URL%%|$API_URL|g" index.html
+                - sed -i "s|%%COMPANY_NAME%%|$COMPANY_NAME|g" index.html
+            build:
+              commands:
+                - echo "Build complete"
+          artifacts:
+            baseDirectory: .
+            files:
+              - '**/*'
+          cache:
+            paths:
+              - node_modules/**/*
+      EnvironmentVariables:
+        - Name: API_URL
+          Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/upload'
+        - Name: COMPANY_NAME
+          Value: !Ref CompanyName
+
+  AmplifyBranch:
+    Type: AWS::Amplify::Branch
+    DependsOn: AmplifyApp
+    Properties:
+      AppId: !GetAtt AmplifyApp.AppId
+      BranchName: "main"
+      EnableAutoBuild: true
+      Stage: PRODUCTION
+      Framework: NONE
+
+  AmplifyDomain:
+    Type: AWS::Amplify::Domain
+    DependsOn: AmplifyBranch
+    Properties:
+      AppId: !GetAtt AmplifyApp.AppId
+      DomainName: !Ref CustomDomainName
+      SubDomainSettings:
+        - Prefix: !Ref CustomDomainPrefix
+          BranchName: main
+      EnableAutoSubDomain: false
+
 Outputs:
+  AmplifyAppUrl:
+    Value: !Sub 'https://main.${AmplifyApp.DefaultDomain}'
+  CustomDomainUrl:
+    Value: !Sub 'https://${CustomDomainPrefix}.${CustomDomainName}'
   ApiUrl:
     Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/upload'
-    Description: Upload endpoint
-  NotifyUrl:
-    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/upload/notify'
-    Description: Upload logging endpoint
