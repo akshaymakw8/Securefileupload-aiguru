@@ -1,104 +1,81 @@
 import json
-import base64
 import boto3
 import os
 import time
 from datetime import datetime
+import re
 
-# Get environment variables
-s3 = boto3.client('s3')
+s3 = boto3.client("s3")
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 UPLOAD_PASSWORD = os.getenv("UPLOAD_PASSWORD")
 CLIENT_PREFIX = os.getenv("CLIENT_PREFIX", "default")
-
-# Allowed file extensions
-ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "csv", "png", "jpg", "jpeg", "eml", "msg"}
+ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "csv", "png", "jpg", "jpeg", "eml", "msg", "txt", "gif"}
 
 def build_response(status_code, message):
-    """
-    Helper function to build a response that includes
-    CORS headers for AWS_PROXY integration.
-    """
     return {
         "statusCode": status_code,
         "headers": {
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+            "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Methods": "POST,OPTIONS",
-            "Access-Control-Allow-Credentials": "true"
         },
-        "body": json.dumps({"body": message}) if isinstance(message, str) else json.dumps(message)
+        "body": json.dumps({ "body": message }) if isinstance(message, str) else json.dumps(message)
     }
 
 def lambda_handler(event, context):
-    # Handle preflight OPTIONS request
     if event.get("httpMethod") == "OPTIONS":
-        return build_response(200, {"message": "CORS preflight response"})
+        return build_response(200, {"message": "CORS preflight OK"})
 
     try:
-        # Log request details for debugging
-        print(f"Processing request for client: {CLIENT_PREFIX}")
-        print(f"Using S3 bucket: {BUCKET_NAME}")
+        body = json.loads(event.get("body", "{}"))
+        path = event.get("path", "")
 
-        # If using API Gateway proxy, 'body' is a JSON string
-        body = json.loads(event["body"]) if "body" in event else event
+        if path.endswith("/notify"):
+            print("Received upload confirmation:")
+            print(json.dumps(body, indent=2))
+            return build_response(200, { "message": "Upload logged successfully" })
 
         if body.get("password") != UPLOAD_PASSWORD:
-            return build_response(401, {"error": "Unauthorized: Incorrect password"})
+            return build_response(401, { "error": "Unauthorized: Incorrect password" })
 
         files = body.get("files", [])
         if not files:
-            return build_response(400, {"error": "No files found in the request"})
-
+            return build_response(400, { "error": "No files provided" })
         if len(files) > 10:
-            return build_response(400, {"error": "You can upload a maximum of 10 files"})
+            return build_response(400, { "error": "Maximum 10 files allowed" })
 
-        uploaded_files = []
+        presigned_files = []
         timestamp = int(time.time())
         date_folder = datetime.now().strftime("%Y-%m-%d")
 
         for file in files:
-            # Get original filename
-            original_filename = file["name"]
-            file_extension = original_filename.split('.')[-1].lower()
+            name = file.get("name")
+            ctype = file.get("type", "application/octet-stream")
+            ext = name.split(".")[-1].lower()
 
-            if file_extension not in ALLOWED_EXTENSIONS:
-                return build_response(
-                    400,
-                    {"error": f"Invalid file type: {original_filename}. Allowed types: PDF, Word, Excel, PNG, JPG, Email."}
-                )
+            if ext not in ALLOWED_EXTENSIONS:
+                return build_response(400, { "error": f"Invalid file type: {name}" })
 
-            # Create a sanitized filename to avoid S3 key issues
-            import re
-            sanitized_filename = re.sub(r'[^\w\.-]', '_', original_filename)
+            safe_name = re.sub(r"[^\w\.-]", "_", name)
+            key = f"{date_folder}/{timestamp}_{safe_name}"
 
-            # Create the S3 key with date-based organization
-            s3_key = f"{date_folder}/{timestamp}_{sanitized_filename}"
-
-            try:
-                file_content = base64.b64decode(file["content"])
-                s3.put_object(
-                    Bucket=BUCKET_NAME,
-                    Key=s3_key,
-                    Body=file_content,
-                    Metadata={
-                        'client': CLIENT_PREFIX,
-                        'original-filename': original_filename
+            url = s3.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": BUCKET_NAME,
+                    "Key": key,
+                    "ContentType": ctype,
+                    "Metadata": {
+                        "client": CLIENT_PREFIX,
+                        "original-filename": name
                     }
-                )
-                uploaded_files.append({
-                    "originalName": original_filename,
-                    "s3Key": s3_key
-                })
-            except Exception as e:
-                print(f"Error uploading file {original_filename}: {str(e)}")
-                return build_response(500, {"error": f"Error uploading {original_filename}: {str(e)}"})
+                },
+                ExpiresIn=3600
+            )
 
-        return build_response(200, {
-            "message": "File(s) uploaded successfully!",
-            "files": uploaded_files,
-            "client": CLIENT_PREFIX
-        })
+            presigned_files.append({ "name": name, "url": url, "key": key })
+
+        return build_response(200, { "message": "Presigned URLs generated", "files": presigned_files })
+
     except Exception as e:
-        print(f"Error processing request: {str(e)}")
-        return build_response(500, {"error": f"Error: {str(e)}"})
+        return build_response(500, { "error": str(e) })
